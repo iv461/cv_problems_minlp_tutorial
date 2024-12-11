@@ -1,4 +1,3 @@
-
 """
 Here we model the consensus maximization (CM) and TLS problem as a mixed-integer 
 linear or nonlinear problem (MINLP) using pyomo to evaluate off-the-shelf solvers.
@@ -9,124 +8,56 @@ Couenne or BARON, by default we evaluate only SCIP.
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
-import math
-from data_simulation import generate_registration_problem_from_pcl, create_rotation_estimation_problem
-from rotation_geometry import compute_residual_angle_between_3d_rotations
+from generate_synthetic_instances import create_point_cloud_registration_problem, RegistrationProblemParams
 import fire
-
+from functools import partial 
 from pyomo.environ import *
 
-np.seterr(all="raise")
-rng = np.random.default_rng(2873654)
+def create_instance(rotation):
+    adversarial_suboptimality = 0.
+    N = 100
+    eps = .5
+    data_scale = 10.
+    outlier_rate = .5
 
+    problem_params = RegistrationProblemParams(N, adversarial_suboptimality, eps, outlier_rate, data_scale)
+    problem_instance = create_point_cloud_registration_problem(problem_params, dims=3, add_rotation=rotation, add_translation=True)
 
-def generate_data_for_pcl_registration_problem(num_points, noise_bound, outlier_rate, gt_translation):
-    """
-    Generate test data for a point cloud translation estimation problem. 
-    The inliers are sampled from straight models, the outliers uniformly. 
-    Additionally, a number of local minimas may be introduced
-    """
-    # Create a random line
-    m = 7.65
-    t = 17.53
-    x = rng.uniform(0, 10, num_points)
-    y = m * x + t
-    inliers = np.stack([x, y]).T
-    # print(f"inliers: {inliers.shape}")
-    src, dst = generate_registration_problem_from_pcl(
-        inliers, outlier_rate=outlier_rate, noise_bound=noise_bound)
-    # Apply random transform
-    dst += gt_translation
-    return src, dst
-
-
-def generate_3d_data(num_points, noise_bound, outlier_rate, gt_translation):
-    inliers = np.vstack([rng.uniform(0, 10., num_points) for i in range(3)]).T
-    src, dst = generate_registration_problem_from_pcl(
-        inliers, outlier_rate=outlier_rate, noise_bound=noise_bound)
-    # Apply random transform
-    dst += gt_translation
-    return src, dst
-
-
-def generate_translation_votes(translation, outlier_rate, num_points, noise_bound, do_3d=False):
-    if do_3d:
-        src, dst = generate_3d_data(
-            num_points, noise_bound, outlier_rate=outlier_rate, gt_translation=translation)
-    else:
-        src, dst = generate_data_for_pcl_registration_problem(num_points, noise_bound, outlier_rate=outlier_rate,
-                                                              gt_translation=translation)
-    # Create translational votes
-    votes = dst - src
-    intervals = np.concatenate(((votes - .5 * noise_bound)[..., np.newaxis],
-                                (votes + .5 * noise_bound)[..., np.newaxis]), axis=-1)
-    return intervals
-
+    if not rotation:
+        return (problem_instance.P - problem_instance.Q), eps
+    return problem_instance.P, problem_instance.Q, eps
 
 def create_max_consensus_problem(y, epsilon):
     """ Create the maximum consensus problem as binary linear program (BLP)
-    as describec in:
+    as described in:
         "Consensus Set Maximization with Guaranteed Global 
                 Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
 
     """
+    print(f"y. shape: {y.shape}")
     N = y.shape[0]
+    d = y.shape[1]
     model = ConcreteModel(name="ConsensusMaximizationBinary")
-    model.x = Var(range(2))  # 1, 2, to enable broadcasting
-    model.inliers = Var(range(N), within=Binary)
+    model.x = Var(range(d))
+    model.z = Var(range(N), within=Binary)
 
     model.constraints = ConstraintList()
     for i in range(N):
-        model.constraints.add(
-            model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * epsilon)
-        model.constraints.add(
-            model.inliers[i] * abs(centers[i, 1] - model.x[1]) <= model.inliers[i] * epsilon)
-        # model.constraints.add(0 <= model.inliers[i])
-        # model.constraints.add(model.inliers[i] <= 1)
-
-    model.objective = Objective(
-        expr=sum(model.inliers[i] for i in range(N)), sense=maximize)
-    model.write("consensus_maximization_model_binary.nl",
-                io_options={"symbolic_solver_labels": True})
-    model.write("consensus_maximization_model_binary.gms",
-                io_options={"symbolic_solver_labels": True})
+        for j in range(d):
+            model.constraints.add(model.z[i] * abs(y[i, j] - model.x[j]) <= model.z[i] * epsilon)
+    
+    model.objective = Objective(expr=sum(model.z[i] for i in range(N)), sense=maximize)
+    model.write(f"maximum_consensus_{d}d_model_binary.nl", io_options={"symbolic_solver_labels": True})
+    model.write(f"maximum_consensus_{d}d_model_binary.gms", io_options={"symbolic_solver_labels": True})
     return model
 
-
-def get_1d_model_with_binary_constraints(centers, bound):
-    """Here we formulate the consensus maximization as binary  program (BLP)
-    as in:
+def create_max_consensus_bilinear_problem(centers, bound):
+    """Create the maximum consensus problem as a bilinear program, 
+    as described in:
         "Consensus Set Maximization with Guaranteed Global 
                 Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
 
-    """
-    N = centers.shape[0]
-    model = ConcreteModel(name="ConsensusMaximizationBinary")
-    model.x = Var(range(1))
-    model.inliers = Var(range(N), within=Binary)
-
-    model.constraints = ConstraintList()
-    for i in range(N):
-        model.constraints.add(
-            model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * bound)
-
-    model.objective = Objective(
-        expr=sum(model.inliers[i] for i in range(N)), sense=maximize)
-    model.write("consensus_maximization_1d_model_binary.nl",
-                io_options={"symbolic_solver_labels": True})
-    model.write("consensus_maximization_1d_model_binary.gms",
-                io_options={"symbolic_solver_labels": True})
-    return model
-
-
-def get_model_with_bilinear_constraints(centers, bound):
-    """Here we formulate the consensus maximization as a bilinear program (BLP)
-    as in:
-        "Consensus Set Maximization with Guaranteed Global 
-                Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
-
-    The inlier-variable is relaxed from binary to real in the interval of [0, 1]
+    The binary variables are relaxed to be in the interval of [0, 1]
     It is equivalent to the binary program but may be easier to solve.
     """
     N = centers.shape[0]
@@ -176,9 +107,10 @@ def create_cs_model_direct(centers, bound):
     return model
 
 
-def create_tls(y, epsilon):
+def create_tls_smu_dc_problemn(y, epsilon):
     """
-    Creates the Truncated Least Squares (1D) translation estimation problem using binary variables
+    Creates the Truncated Least Squares (1D) translation estimation problem.
+    modeled without binary variables.
     """
     N = y.shape[0]
     model = ConcreteModel(name="TLS-SMU")
@@ -198,7 +130,6 @@ def create_tls(y, epsilon):
     return model
 
 # Now the rotation problems
-
 def quat_mul(a, b):
     """
     Implements the formula for multiplying two quaternions. 
@@ -270,92 +201,21 @@ def create_quat_pyomo_model(src, dst, noise_bound):
                 "symbolic_solver_labels": True})
     return model
 
-
 def solve_with_pyomo(model):
     solver = SolverFactory('scip')
     solver.solve(model, tee=True)
     # Display the solution
     model.x.display()
 
-def solve_with_pyomo(src, dst, gt_rot_mat, model):
-    # solver = SolverFactory('couenne', executable=COUENNE_PATH)
-    solver = SolverFactory('scip')
-    results = solver.solve(model, tee=True)
-
-    # Print results
-    print("Optimal solution:")
-    print("x =", [value(model.x[i]) for i in range(4)])
-
-    solver = SolverFactory('scip')
-    solver.solve(model, tee=True)
-    # Display the solution
-    model.x.display()
-
-    rot_est = Rotation.from_quat(
-        to_w_last([value(model.x[i]) for i in range(4)]))
-    rot_mat_est = rot_est.as_matrix()
-
-    residual_angle = math.degrees(
-        compute_residual_angle_between_3d_rotations(gt_rot_mat, rot_mat_est))
-    print(
-        f"Residual angle between estimated rotation and ground-truth: {residual_angle:.3f}°")
-    success = residual_angle < 0.1
-    return success
-
-
-def test_on_translation_problem():
-    num_points = 500
-    noise_bound = .1
-    outlier_rate = .5
-
-    trans = np.array([4.4535, 20.478])
-
-    src, dst = generate_data_for_pcl_registration_problem(num_points, noise_bound, outlier_rate=outlier_rate,
-                                                          gt_translation=trans)
-
-    # Create translational votes (interval centers)
-    votes = dst - src
-
-    plot_problem(src, dst, votes)
-
-    get_tls_smu(votes, noise_bound)
-    return
-    # best_x, inliers = solve_with_custom_bnb(votes, noise_bound)
-    # num_inliers = np.count_nonzero(inliers)
-
-    model_binary = get_model_with_binary_constraints(votes, noise_bound)
-    model_bilinear = get_model_with_bilinear_constraints(votes, noise_bound)
-    model_1d_binary = get_1d_model_with_binary_constraints(votes, noise_bound)
-    model_1d_direct = create_cs_model_direct(votes, noise_bound)
-    # read_from_gams_and_solve("consensus_maximization_model_binary.gms")
-    # read_from_gams_and_solve("consensus_maximization_model_bilinear.gms")
-
-def test_on_rotation_problem():
-    noise_bound = .1
-    data_scale = 1.
-    num_inliers = 50
-    outlier_rate = .6
-    max_translation = 1.2
-    adv_amount = .1
-    src, dst, gt_rot_mat, adv_rotmat =\
-        create_rotation_estimation_problem(
-            num_inliers=num_inliers, noise_bound=(.5*noise_bound),
-            outlier_rate=outlier_rate,
-            second_largest_set_consensus_amount=adv_amount,
-            dims=3, data_scale=data_scale, shuffle=True)
-
-    model = create_quat_pyomo_model(src, dst, noise_bound)
-    solve_with_pyomo(src, dst, gt_rot_mat, model)
-
 def solve_problem(problem: str): 
-    problem_factory = {"maximum_consensus_billinear": create_max_consensus_problem, 
-                        "tls_rotation_dc" : create_tls }
+    problem_factory = {"maximum_consensus": partial(create_max_consensus_problem, *create_instance(rotation=False)), 
+                        "tls_rotation_dc" : partial(create_max_consensus_problem, *create_instance(rotation=False)) }
 
     if problem not in problem_factory.keys():
         print(f"Unknown problem: '{problem}', available ones: {list(problem_factory.keys())}")
         return 
 
     solve_with_pyomo(problem_factory[problem]())
-    
+
 if __name__ == "__main__":
     fire.Fire()

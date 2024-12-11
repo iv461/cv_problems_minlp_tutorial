@@ -93,7 +93,7 @@ conda activate minlp-cv
 Then, install the recommended solver `SCIP`:
 
 ```sh
-conda install conda-forge::scip
+conda install gcg papilo scip soplex zimpl --channel conda-forge
 ```
 
 and the other requirements: 
@@ -111,7 +111,7 @@ To run the examples on synthetic problem instances, run:
 python main.py solve_problem <problem>
 ```
 
-where `problem` can be `maximum_consensus_bilinear`, `tls_translation`, `tls_rotation`. `tls_rotation_dc`
+where `problem` can be `maximum_consensus`, `tls_translation`, `tls_rotation`. `tls_rotation_dc`
 
 
 ## License 
