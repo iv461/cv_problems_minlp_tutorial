@@ -111,7 +111,7 @@ To run the examples on synthetic problem instances, run:
 python main.py solve_problem <problem>
 ```
 
-where `problem` can be `maximum_consensus`, `tls_translation`, `tls_rotation`. `tls_rotation_dc`
+where `problem` can be `maximum_consensus`, `tls_translation`, `tls_rotation`
 
 
 ## License 
