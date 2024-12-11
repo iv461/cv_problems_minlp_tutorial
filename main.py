@@ -50,62 +50,6 @@ def create_max_consensus_problem(y, epsilon):
     model.write(f"maximum_consensus_{d}d_model_binary.gms", io_options={"symbolic_solver_labels": True})
     return model
 
-def create_max_consensus_bilinear_problem(centers, bound):
-    """Create the maximum consensus problem as a bilinear program, 
-    as described in:
-        "Consensus Set Maximization with Guaranteed Global 
-                Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
-
-    The binary variables are relaxed to be in the interval of [0, 1]
-    It is equivalent to the binary program but may be easier to solve.
-    """
-    N = centers.shape[0]
-    model = ConcreteModel(name="ConsensusMaximizationBinary")
-    model.x = Var(range(2))  # 1, 2, to enable broadcasting
-    model.inliers = Var(range(N))
-
-    model.constraints = ConstraintList()
-    for i in range(N):
-        model.constraints.add(
-            model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * bound)
-        model.constraints.add(
-            model.inliers[i] * abs(centers[i, 1] - model.x[1]) <= model.inliers[i] * bound)
-        model.constraints.add(0 <= model.inliers[i])
-        model.constraints.add(model.inliers[i] <= 1)
-
-    model.objective = Objective(
-        expr=sum(model.inliers[i] for i in range(N)), sense=maximize)
-    model.write("consensus_maximization_model_bilinear.nl",
-                io_options={"symbolic_solver_labels": True})
-    model.write("consensus_maximization_model_bilinear.gms",
-                io_options={"symbolic_solver_labels": True})
-    return model
-
-
-def create_cs_model_direct(centers, bound):
-    """Here we formulate the consensus maximization as a bilinear program (BLP)
-    as in:
-        "Consensus Set Maximization with Guaranteed Global 
-                Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
-
-    The inlier-variable is relaxed from binary to real in the interval of [0, 1]
-    It is equivalent to the binary program but may be easier to solve.
-    """
-    N = centers.shape[0]
-    model = ConcreteModel(name="ConsensusMaximizationBinary")
-    model.R = RangeSet(-100, 100)
-    model.x = Var(model.R, range(1))  # 1, 2, to enable broadcasting
-    model.inliers = Var(range(N))
-
-    model.objective = Objective(expr=sum(
-        (abs(model.x[0] - centers[i, 0]) <= bound) for i in range(N)), sense=maximize)
-    model.write("consensus_maximization_model_direct.nl",
-                io_options={"symbolic_solver_labels": True})
-    model.write("consensus_maximization_model_direct.gms",
-                io_options={"symbolic_solver_labels": True})
-    return model
-
-
 def create_tls_translation_problem(y, epsilon):
     """
     Creates the Truncated Least Squares (1D) translation estimation problem.
