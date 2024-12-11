@@ -18,29 +18,68 @@ But we can verify that a solution is correct and compare it to the solution from
 ## Problems 
 
 
-### Maximum consensus: 
+### Maximum consensus (MC): 
 
-The maximum consensus problem for outlier-robust estimation, leads to difficult combinatorial optimization problems (1D): 
+The maximum consensus (MC) problem for outlier-robust estimation, leads to difficult combinatorial optimization problems (1D) [1]: 
 
 ```math
+
 \begin{equation}
 	\begin{aligned}
-		\argmax_{x \in \mathbb{R}, \, \mathbf{z}} \quad &\sum_{i=1}^N z_i\\
-		\text{subject to} \quad  &z_i |x_i - x| \leq z_i \epsilon\\
+		\max_{x \in \mathbb{R}, \, \mathbf{z}} \quad &\sum_{i=1}^N z_i\\
+		\text{subject to} \quad  &z_i |y_i - x| \leq z_i \epsilon\\
 		&z_i \in \{0, 1\}, \forall i \in \{1, ..., N\}\\
 	\end{aligned}
 \end{equation}
 ```
 
+with the measured data points $y_i$, the binary decision variables $z_i$ deciding whether the i-th measurement is an inlier, and measurement accuracy $\epsilon$.
+
 ### Truncated Least Squares (TLS)
+
+Truncated Least Squares for outlier-robust rotation estimation between two point clouds [2]:
 
 ```math
 \begin{equation}
 	\begin{aligned}
-	\argmin_{\mathbf{R} \in \mathrm{SO}(3) , \,\mathbf{t} \in \mathbb{R}^3} \quad \sum_{i=1}^{N} \min \left(||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i + \mathbf{t}||_2^2, \epsilon^2 \right)
+	\min_{\mathbf{R} \in \mathrm{SO}(3)} \quad \sum_{i=1}^{N} \min \left(||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i ||_2^2, \epsilon^2 \right)
 	\end{aligned}
 \end{equation}
 ```
+
+### TLS without binary variables
+
+The Truncated least squares combinatorial problem can modeled in two ways: with N additional binary variables similar to the MC problem, or without binary variables. 
+With 
+```math
+\begin{equation}
+	\begin{aligned}
+		\min(r, \epsilon^2) = r- \max(r- \epsilon^2, 0)
+	\end{aligned}
+\end{equation}
+```
+and
+
+```math
+\begin{equation}
+	\begin{aligned}
+		\max(x, 0) = \frac{x + |x|}{2}
+	\end{aligned}
+\end{equation}
+```
+
+we obtain the TLS-DC-ABS problem without binary variables, that is equivalent to the TLS problem:
+```math
+\begin{equation}
+	\begin{aligned}
+		(\text{TLS-DC-ABS}) \quad \text{TLS}(x) = \sum_{i=1}^{N} r_i - \frac{r_i - \epsilon^2 + |r_i - \epsilon^2|}{2}
+	\end{aligned}
+\end{equation}
+```
+with $r_i = ||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i ||_2^2$.
+
+Without binary variables, the problem can be solved significantly faster, 0.7s instead of 20s with SCIP.
+
 
 # Getting started
 
@@ -55,8 +94,6 @@ Then, install the recommended solver `SCIP`:
 
 ```sh
 conda install conda-forge::scip
-
-conda install gcg papilo scip soplex zimpl --channel conda-forge
 ```
 
 and the other requirements: 
@@ -78,3 +115,12 @@ where `problem` can be `maximum_consensus_bilinear`, `tls_translation`, `tls_rot
 
 
 
+
+## References 
+
+[1] *H. Li, “Consensus set maximization with guaranteed global optimality for
+robust geometry estimation,” in 2009 IEEE 12th International Conference on
+Computer Vision, 2009*
+
+[2] *H. Yang and L. Carlone, “A quaternion-based certifiably optimal solution to
+the Wahba problem with outliers,” in 2019 IEEE/CVF International Conference on Computer Vision (ICCV), 2019*

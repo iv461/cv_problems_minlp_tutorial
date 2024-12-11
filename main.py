@@ -64,14 +64,14 @@ def generate_translation_votes(translation, outlier_rate, num_points, noise_boun
     return intervals
 
 
-def get_model_with_binary_constraints(centers, bound):
-    """Here we formulate the consensus maximization as binary program (BLP)
-    as in:
+def create_max_consensus_problem(y, epsilon):
+    """ Create the maximum consensus problem as binary linear program (BLP)
+    as describec in:
         "Consensus Set Maximization with Guaranteed Global 
                 Optimality for Robust Geometry Estimation", Hongdong Li, ICCV 2009
 
     """
-    N = centers.shape[0]
+    N = y.shape[0]
     model = ConcreteModel(name="ConsensusMaximizationBinary")
     model.x = Var(range(2))  # 1, 2, to enable broadcasting
     model.inliers = Var(range(N), within=Binary)
@@ -79,9 +79,9 @@ def get_model_with_binary_constraints(centers, bound):
     model.constraints = ConstraintList()
     for i in range(N):
         model.constraints.add(
-            model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * bound)
+            model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * epsilon)
         model.constraints.add(
-            model.inliers[i] * abs(centers[i, 1] - model.x[1]) <= model.inliers[i] * bound)
+            model.inliers[i] * abs(centers[i, 1] - model.x[1]) <= model.inliers[i] * epsilon)
         # model.constraints.add(0 <= model.inliers[i])
         # model.constraints.add(model.inliers[i] <= 1)
 
@@ -176,102 +176,26 @@ def create_cs_model_direct(centers, bound):
     return model
 
 
-def get_tls_smu(centers, bound):
+def create_tls(y, epsilon):
     """
-
+    Creates the Truncated Least Squares (1D) translation estimation problem using binary variables
     """
-    N = centers.shape[0]
+    N = y.shape[0]
     model = ConcreteModel(name="TLS-SMU")
-    model.x = Var(range(1), bounds=[-10, 10], initialize=4.4535)
-    # model.alpha = Var(range(1), bounds=[1e-8, 2], initialize=0.05)
-    # model.inliers = Var(range(N), within=Binary)
+    model.x = Var(range(1))
 
     # SMU: Smooth approximation of max(x, 0) (i.e. ReLU) https://arxiv.org/pdf/2111.04682
-    def smu_relu(x, a):
-        # return (x + sqrt(x**2 + a**2)) / 2
-        return (x + abs(x)) / 2
-
+    def smu_relu(x): return (x + abs(x)) / 2
     # Difference of Convex (DC) functions reformulation of TLS:
-    def tls_dc(r, a):
-        return r - smu_relu(r - bound, a)
+    def tls_dc(r): return r - smu_relu(r - bound)
 
-    # model.constraints = ConstraintList()
-    # for i in range(N):
-    #    model.constraints.add(model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * bound)
     def objective(model):
-        return sum(tls_dc((centers[i, 0] - model.x[0])**2, 1e-4) for i in range(N))
+        return sum(tls_dc((centers[i, 0] - model.x[0])**2) for i in range(N))
 
     model.objective = Objective(rule=objective, sense=minimize)
-    model.write("tls_1d_dc_smu.nl", io_options={
-                "symbolic_solver_labels": True})
-    model.write("tls_1d_dc_smu.gms", io_options={
-                "symbolic_solver_labels": True})
-    solver = SolverFactory('scip')
-    solver.solve(model, tee=True)
-    # Display the solution
-    model.x.display()
-    # print(f"x-val: {value(model.x)}")
-    # result = np.array([value(model.x[i]) for i in model.N])
+    model.write("tls_1d_dc_smu.nl", io_options={"symbolic_solver_labels": True})
+    model.write("tls_1d_dc_smu.gms", io_options={"symbolic_solver_labels": True})
     return model
-
-
-def read_from_gams_and_solve(model_filename):
-    print(f"Loading model file {model_filename} ...")
-    model = ConcreteModel()
-    model_instance = model.create_instance(model_filename)
-
-    solver = SolverFactory('couenne', executable=COUENNE_PATH)
-    results = solver.solve(model_instance, tee=True)
-    # Print results
-    print("Optimal solution:")
-    print("x =", [value(model.x[i]) for i in range(2)])
-    print("Inliers:")
-    # for i in range(centers.shape[0]):
-    # print("Center", i+1, "is an inlier:", value(model.inliers[i]) > 1e-3)
-    print("\nSolver termination condition:",
-          results.solver.termination_condition)
-    print("Solver status:", results.solver.status)
-    print("Solver message:", results.solver.message)
-    print("Solver statistics:")
-    print("  Total time:", results.solver.time, "seconds")
-    print("  Iterations:", results.solver.iterations)
-
-
-def plot_problem(src, dst, votes):
-    fig, axes = plt.subplots(2)
-
-    # axes[0].scatter(inliers[:, 0], inliers[:, 1], c="red", alpha=.5, label="Inliers")
-    axes[0].scatter(src[:, 0], src[:, 1], c="red", alpha=.5, label="Src")
-    axes[0].scatter(dst[:, 0], dst[:, 1], c="green", alpha=.5, label="Dst")
-
-    # SMU: Smooth approximation of max(x, 0) (i.e. ReLU) https://arxiv.org/pdf/2111.04682
-    def smu_relu(x, a):
-        return (x + abs(x)) / 2
-
-    # Difference of Convex (DC) functions reformulation of TLS:
-    def tls_dc(r, a):
-        return r - smu_relu(r - .1, a)
-
-    # model.constraints = ConstraintList()
-    # for i in range(N):
-    #    model.constraints.add(model.inliers[i] * abs(centers[i, 0] - model.x[0]) <= model.inliers[i] * bound)
-    def objective(x):
-        return sum(tls_dc((votes[i, 0] - x)**2, 1e-4) for i in range(len(votes[:, 0])))
-
-    x = np.linspace(-10, 10, 300)
-    y_vals = [objective(x_i) for x_i in x]
-
-    axes[1].plot(x, y_vals, c="r", alpha=1., label="Votes")
-
-    # axes[1].scatter(votes[:, 0], votes[:, 1], c="r", alpha=.005, label="Votes")
-    axes[1].set_xlabel("X")
-    axes[1].set_ylabel("Y")
-    # axes[0].scatter(dst[:, 0], dst[:, 1], c="grey", alpha=.5, label="Outliers")
-    # plt.show()
-    fig.suptitle(f"TLS linear regression")
-    fig.legend()
-    plt.savefig(f"tls_linear_regression.png", dpi=300)
-
 
 # Now the rotation problems
 
@@ -308,7 +232,6 @@ def to_w_last(q):
 
 def sq_norm(a): return a[0]**2 + a[1]**2 + a[2]**2
 def sq_norm_q(a): return a[0]**2 + a[1]**2 + a[2]**2 + a[3]**2
-
 
 def create_quat_pyomo_model(src, dst, noise_bound):
     """
@@ -347,6 +270,12 @@ def create_quat_pyomo_model(src, dst, noise_bound):
                 "symbolic_solver_labels": True})
     return model
 
+
+def solve_with_pyomo(model):
+    solver = SolverFactory('scip')
+    solver.solve(model, tee=True)
+    # Display the solution
+    model.x.display()
 
 def solve_with_pyomo(src, dst, gt_rot_mat, model):
     # solver = SolverFactory('couenne', executable=COUENNE_PATH)
@@ -418,5 +347,15 @@ def test_on_rotation_problem():
     model = create_quat_pyomo_model(src, dst, noise_bound)
     solve_with_pyomo(src, dst, gt_rot_mat, model)
 
+def solve_problem(problem: str): 
+    problem_factory = {"maximum_consensus_billinear": create_max_consensus_problem, 
+                        "tls_rotation_dc" : create_tls }
+
+    if problem not in problem_factory.keys():
+        print(f"Unknown problem: '{problem}', available ones: {list(problem_factory.keys())}")
+        return 
+
+    solve_with_pyomo(problem_factory[problem]())
+    
 if __name__ == "__main__":
     fire.Fire()
