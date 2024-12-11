@@ -46,3 +46,7 @@ python/*.egg-info/
 *.conan
 CMakeUserPresets.json
 *.egg-info
+*.col 
+*.nl
+*.row 
+*.gms
