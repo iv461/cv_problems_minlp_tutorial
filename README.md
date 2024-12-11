@@ -114,7 +114,9 @@ python main.py solve_problem <problem>
 where `problem` can be `maximum_consensus_bilinear`, `tls_translation`, `tls_rotation`. `tls_rotation_dc`
 
 
+## License 
 
+MIT
 
 ## References 
 
