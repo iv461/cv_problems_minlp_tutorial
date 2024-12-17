@@ -40,7 +40,7 @@ The Truncated Least Squares (TLS) problem for outlier-robust estimation of the r
 ```math
 \begin{equation}
 	\begin{aligned}
-	\min_{\mathbf{R} \in \mathrm{SO}(3)} \quad \sum_{i=1}^{N} \min \left(||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i ||_2^2, \epsilon^2 \right)
+	\min_{\mathbf{R} \in \mathrm{SO}(3)} \quad \sum_{i=1}^{N} \min \left( \lVert \mathbf{q}_i - \mathbf{R} \mathbf{p}_i \rVert_2^2, \epsilon^2 \right)
 	\end{aligned}
 \end{equation}
 ```
@@ -61,7 +61,7 @@ and
 ```math
 \begin{equation}
 	\begin{aligned}
-		\max(x, 0) = \frac{x + |x|}{2}
+		\max(x, 0) = \frac{x + | x | }{2}
 	\end{aligned}
 \end{equation}
 ```
@@ -74,7 +74,7 @@ we obtain the TLS-DC-ABS problem without binary variables, that is equivalent to
 	\end{aligned}
 \end{equation}
 ```
-with $r_i = ||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i ||_2^2$.
+with $r_i =  \lVert \mathbf{q}_i - \mathbf{R} \mathbf{p}_i \rVert_2^2$.
 
 Without binary variables, the problem can be solved significantly faster.
 
