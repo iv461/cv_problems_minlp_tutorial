@@ -2,21 +2,19 @@
 
 # What is this?
 
-This repository shows how to use Mixed Integer Nonlinear Programming (MINLP) solvers to solve some common computer vision estimation problems to global optimality.
+This repository shows how to use Mixed Integer Nonlinear Programming (MINLP) to solve some common computer vision estimation problems to global optimality.
 
-Many problems in computer vision are combinatorial and non-convex, making them difficult to solve to global optimality.
+We focus on outlier-robust problems, which are combinatorial and non-convex, making them difficult to solve.
 
+Modern open-source MINLP solvers such as [SCIP](https://github.com/scipopt/scip) and [Couenne](https://www.coin-or.org/Couenne/) are general enough to solve such problems with global optimality guarantees, unlike the commonly used local optimisation methods such as Gauss-Newton.
 
-Modern open-source MINLP solvers such as SCIP and Cuenne are general enough to solve these kinds of problems with global optimality guarantees, unlike the commonly used local optimization methods such as Gauss-Newton.
+We model and solve these problems in Python using the [Pyomo](https://github.com/Pyomo/pyomo) library. Optionally, the problem instances can be exported to a file in AMPL and GAMS format.
 
-We model and solve the problems in Python using `pyomo`, optionally exporting the problem instance to a file in AMPL and GAMS format.
+The goal here is not to be real-time -- the branch-and-bound solvers are not tailored to the specific problems, and solution times of seconds to several minutes can be expected.
 
-The goal here is not to be real-time -- the branch-and-bound solvers are not tailored to the problems, and solution times from seconds to several minutes are normal.
-
-But we can verify that a solution is correct and compare it to the solution from local methods.
+However, we can verify that a solution is correct and compare it to the solution obtained by local solvers.
 
 ## Problems 
-
 
 ### Maximum consensus (MC): 
 
@@ -33,11 +31,11 @@ The maximum consensus (MC) problem for outlier-robust estimation, leads to diffi
 \end{equation}
 ```
 
-with the measured data points $y_i$, the binary decision variables $z_i$ deciding whether the i-th measurement is an inlier, and measurement accuracy $\epsilon$.
+with the measured data points $y_i$, the binary decision variables $z_i$ that decide whether the i-th measurement is an inlier, and the measurement accuracy $\epsilon$.
 
 ### Truncated Least Squares (TLS)
 
-Truncated Least Squares for outlier-robust rotation estimation between two point clouds [2]:
+The Truncated Least Squares (TLS) problem for outlier-robust estimation of the rotation between two point clouds [2]:
 
 ```math
 \begin{equation}
@@ -49,7 +47,7 @@ Truncated Least Squares for outlier-robust rotation estimation between two point
 
 ### TLS without binary variables
 
-The Truncated least squares combinatorial problem can modeled in two ways: with N additional binary variables similar to the MC problem, or without binary variables. 
+The Truncated Least Squares problem can be modelled in two ways: with N additional binary variables, similar to the MC problem, or without binary variables. 
 With 
 ```math
 \begin{equation}
@@ -78,12 +76,12 @@ we obtain the TLS-DC-ABS problem without binary variables, that is equivalent to
 ```
 with $r_i = ||\mathbf{q}_i - \mathbf{R} \mathbf{p}_i ||_2^2$.
 
-Without binary variables, the problem can be solved significantly faster, 0.7s instead of 20s with SCIP.
+Without binary variables, the problem can be solved significantly faster.
 
 
 # Getting started
 
-Easiest way to install the solvers is to use a conda environment:
+The easiest way to install the solvers is to use a conda environment:
 
 ```sh
 conda create -n minlp-cv python==3.11 
